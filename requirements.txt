@@ -1,0 +1,6 @@
+anthropic>=1.13,<2
+instaloader==4.15.3
+gspread>=6.2,<7
+google-auth>=2.30
+requests>=2.32
+python-dotenv>=1.0

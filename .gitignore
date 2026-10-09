@@ -1,0 +1,7 @@
+.env
+*.json
+session-*
+__pycache__/
+.venv/
+logs/
+saida/
