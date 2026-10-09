@@ -76,7 +76,9 @@ não há resposta pronta para usar. As outras duas validações são opcionais, 
 
 ### 3. Respostas possíveis → abas `desmentidos` e `respostas`
 
-Uma notícia só recebe respostas depois de ter **um desmentido**. O caminho é:
+As respostas podem ser **geradas pelo robô** ou **cadastradas à mão** — as duas ficam na mesma
+aba `respostas` e são tratadas igual. O robô só gera respostas para notícias que têm
+**desmentido**; a resposta manual não exige desmentido (mas é boa prática escrevê-lo). O caminho é:
 
 1. **Escreva o desmentido** (aba `desmentidos`, uma linha por notícia):
 
@@ -101,6 +103,12 @@ Uma notícia só recebe respostas depois de ter **um desmentido**. O caminho é:
    | `texto` | a resposta, **sem links** (cite a fonte pelo nome, se quiser: "segundo a PF") |
    | `origem` | `manual` |
    | `validacao_humana` | `aprovada`, se você mesmo revisou |
+
+   Atenção na resposta manual:
+   - o **`id` é obrigatório**: linha sem `id` é ignorada pelo sistema;
+   - **não coloque links**: a trava que remove links só atua nas respostas geradas pelo robô;
+   - enquanto a notícia tiver uma resposta `pendente` ou `aprovada` (manual ou não), o
+     `gerar-respostas` **não gera outras** para ela. Ele só volta a gerar se todas forem `reprovada`.
 
 4. **Aprove**: marque `aprovada` nas respostas que podem ser publicadas. Se reprovar todas as de
    uma notícia, o próximo `gerar-respostas` rascunha um novo lote.
