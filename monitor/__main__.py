@@ -17,6 +17,7 @@ def main() -> None:
     sub.add_parser("init-planilha", help="cria as abas, cabeçalhos e listas de validação na planilha")
     sub.add_parser("coletar", help="coleta postagens novas, analisa e liga cada uma às notícias (o que o agendador roda)")
     sub.add_parser("gerar-respostas", help="rascunha respostas para notícias falsas confirmadas que têm desmentido")
+    sub.add_parser("verificar-integridade", help="aponta chaves repetidas, vazias ou que apontam para registro inexistente")
     mesclar = sub.add_parser("mesclar-noticias", help="junta uma notícia duplicada (ORIGEM) em outra (DESTINO)")
     mesclar.add_argument("origem")
     mesclar.add_argument("destino")
@@ -62,6 +63,10 @@ def main() -> None:
         print(pipeline._planilha(cfg).mesclar_noticias(args.origem.upper(), args.destino.upper()))
     elif args.comando == "gerar-respostas":
         pipeline.gerar_respostas(cfg)
+    elif args.comando == "verificar-integridade":
+        problemas = pipeline._planilha(cfg).verificar_integridade()
+        print("\n".join(problemas) if problemas else "Integridade OK: todas as chaves batem.")
+        sys.exit(1 if problemas else 0)
     elif args.comando == "testar-analise":
         noticias = pipeline._planilha(cfg).noticias()
         resultado = Analisador(cfg.modelo, cfg.esforco).analisar(

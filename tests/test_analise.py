@@ -7,7 +7,8 @@ from monitor.analise import SCHEMA_ANALISE, Analisador, formatar_catalogo
 from monitor.config import Config
 from monitor.instagram import Publicacao
 from monitor.planilha import (
-    ESTRUTURA, VALIDACAO, Planilha, _celula, proximo_id, resumir_ocorrencias,
+    ESTRUTURA, VALIDACAO, ErroIntegridade, Planilha, _celula, problemas_integridade, proximo_id,
+    resumir_ocorrencias,
 )
 
 CFG = Config("id", "u", None, "claude-opus-5-5", "medium", 12, 0)
@@ -160,6 +161,13 @@ class AbaFalsa:
     def update(self, valores, intervalo, value_input_option):
         self.updates.append({"range": intervalo, "values": valores})
 
+    def col_values(self, coluna):
+        cab = list(self.registros[0]) if self.registros else []
+        return ["cabecalho"] + [str(r.get(cab[coluna - 1], "")) for r in self.registros] if cab else []
+
+    def append_rows(self, valores, value_input_option):
+        self.anexadas = valores
+
 
 def _planilha_falsa(**abas):
     pl = Planilha.__new__(Planilha)
@@ -190,9 +198,9 @@ def test_mesclar_noticias():
     desmentidos = AbaFalsa([{"noticia_id": "N0002", "veredito": "falso"}])
     pl = _planilha_falsa(noticias=noticias, ocorrencias=ocorrencias, respostas=respostas, desmentidos=desmentidos)
     msg = pl.mesclar_noticias("N0002", "N0001")
-    assert msg.startswith("2 ocorrências movidas")
+    assert msg.startswith("1 ocorrências movidas") and "1 ficaram em N0002 como descartadas" in msg
     cel = {u["range"]: u["values"][0][0] for u in ocorrencias.updates}
-    assert cel["A3"] == "A:N0001" and cel["L3"] == "descartada"  # duplicada na mesma postagem
+    assert "A3" not in cel and cel["L3"] == "descartada"  # mesmo post nas duas: não move (evita id repetido)
     assert cel["A4"] == "B:N0001" and cel["B4"] == "N0001" and "L4" not in cel
     assert {"range": "B2", "values": [["N0001"]]} in respostas.updates
     assert {"range": "A2", "values": [["N0001"]]} in desmentidos.updates  # destino não tinha desmentido
@@ -213,3 +221,53 @@ def test_gerar_respostas_remove_links_e_pede_citacao_sem_link():
     r = Analisador("m", "low", cli, contexto="x").gerar_respostas({"titulo": "t"}, {"veredito": "nao_comprovado"})
     assert r[0]["texto"] == "Não comprovado, segundo a PF."
     assert "NUNCA coloque links" in cli.chamadas[0]["system"][0]["text"]
+
+
+TABELAS_OK = {
+    "perfis": [{"id": "P001", "perfil": "a"}],
+    "noticias": [{"id": "N0001"}, {"id": "N0002"}],
+    "postagens": [{"shortcode": "AAA", "perfil_id": "P001"}],
+    "ocorrencias": [{"id": "AAA:N0001", "noticia_id": "N0001", "shortcode": "AAA", "perfil_id": "P001",
+                     "resposta_usada_id": "N0001-R1"}],
+    "desmentidos": [{"noticia_id": "N0001"}],
+    "respostas": [{"id": "N0001-R1", "noticia_id": "N0001"}],
+}
+
+
+def test_integridade_ok():
+    assert problemas_integridade(TABELAS_OK) == []
+
+
+def test_integridade_aponta_orfas_repetidas_e_vazias():
+    t = {k: [dict(r) for r in v] for k, v in TABELAS_OK.items()}
+    t["respostas"] += [{"id": "N0009-R1", "noticia_id": "N0009"},      # notícia inexistente
+                       {"id": "N0001-R1", "noticia_id": "N0001"},      # id repetido
+                       {"id": "X1", "noticia_id": "N0002"},            # fora do padrão
+                       {"id": "", "texto": "sem id"}]                  # id vazio
+    t["desmentidos"].append({"noticia_id": "N0001"})                   # 2º desmentido da mesma notícia
+    t["ocorrencias"].append({"id": "BBB:N0002", "noticia_id": "N0002", "shortcode": "BBB", "perfil_id": "P009",
+                             "resposta_usada_id": "N0001-R1"})         # post e perfil inexistentes; resposta de outra notícia
+    p = " | ".join(problemas_integridade(t))
+    for trecho in ["noticia_id 'N0009' não existe em noticias.id", "id 'N0001-R1' repetido", "id 'X1' não segue",
+                   "respostas linha 6: id vazio", "desmentidos linha 3: noticia_id 'N0001' repetido",
+                   "shortcode 'BBB' não existe em postagens", "perfil_id 'P009' não existe em perfis",
+                   "resposta_usada_id 'N0001-R1' é de outra notícia"]:
+        assert trecho in p, trecho
+
+
+def test_robo_nao_grava_chave_inexistente_nem_repetida():
+    noticias = AbaFalsa([{"id": "N0001", "titulo": "x"}])
+    respostas = AbaFalsa([{"id": "N0001-R1", "noticia_id": "N0001"}])
+    pl = _planilha_falsa(noticias=noticias, respostas=respostas)
+    for linha, erro in [({"id": "N0009-R1", "noticia_id": "N0009"}, "inexistente"),
+                        ({"id": "N0001-R1", "noticia_id": "N0001"}, "repetido"),
+                        ({"id": "", "noticia_id": "N0001"}, "vazio")]:
+        try:
+            pl.adicionar("respostas", [linha])
+        except ErroIntegridade as e:
+            assert erro in str(e)
+        else:
+            raise AssertionError(f"deveria recusar {linha}")
+    assert not hasattr(respostas, "anexadas")
+    pl.adicionar("respostas", [{"id": "N0001-R2", "noticia_id": "N0001"}])
+    assert respostas.anexadas[0][0] == "N0001-R2"

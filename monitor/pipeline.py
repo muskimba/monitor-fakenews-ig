@@ -63,6 +63,16 @@ def coletar(cfg: Config) -> None:
 
     planilha.atualizar_resumo_noticias()
     log.info("Fim: %d postagens registradas nesta execução.", total)
+    avisar_integridade(planilha)
+
+
+def avisar_integridade(planilha: Planilha) -> list[str]:
+    """Edições manuais (ex.: apagar uma notícia) podem deixar chaves órfãs; avisa no log."""
+    problemas = planilha.verificar_integridade()
+    if problemas:
+        log.warning("Integridade: %d problema(s) na planilha (rode `verificar-integridade`): %s",
+                    len(problemas), "; ".join(problemas[:5]) + (" …" if len(problemas) > 5 else ""))
+    return problemas
 
 
 def processar_postagem(pub: Publicacao, perfil_id: str, analisador: Analisador, cfg: Config,

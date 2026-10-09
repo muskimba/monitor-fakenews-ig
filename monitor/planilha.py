@@ -61,6 +61,74 @@ OPCOES_VALIDACAO = {
     "respostas": ["pendente", "aprovada", "reprovada"],
 }
 
+# Integridade: chave primária (única, não vazia) de cada aba...
+CHAVE_PRIMARIA = {
+    "perfis": "id",
+    "noticias": "id",
+    "postagens": "shortcode",
+    "ocorrencias": "id",
+    "desmentidos": "noticia_id",
+    "respostas": "id",
+}
+# ...e chaves estrangeiras: (aba, coluna) só aceita valor que exista na chave primária de outra aba.
+CHAVES_ESTRANGEIRAS = [
+    ("postagens", "perfil_id", "perfis"),
+    ("ocorrencias", "noticia_id", "noticias"),
+    ("ocorrencias", "shortcode", "postagens"),
+    ("ocorrencias", "perfil_id", "perfis"),
+    ("ocorrencias", "resposta_usada_id", "respostas"),
+    ("desmentidos", "noticia_id", "noticias"),
+    ("respostas", "noticia_id", "noticias"),
+]
+
+
+class ErroIntegridade(ValueError):
+    """Gravação recusada: chave repetida, vazia ou apontando para registro inexistente."""
+
+
+def _txt(valor) -> str:
+    return str(valor if valor is not None else "").strip()
+
+
+def problemas_integridade(tabelas: dict[str, list[dict]]) -> list[str]:
+    """Confere chaves primárias e estrangeiras. `tabelas`: aba -> linhas (como get_all_records)."""
+    problemas, chaves = [], {}
+    for aba, pk in CHAVE_PRIMARIA.items():
+        vistos = {}
+        for linha, r in enumerate(tabelas.get(aba, []), start=2):
+            valor = _txt(r.get(pk))
+            if not valor:
+                if any(_txt(v) for v in r.values()):
+                    problemas.append(f"{aba} linha {linha}: {pk} vazio")
+            elif valor in vistos:
+                problemas.append(f"{aba} linha {linha}: {pk} '{valor}' repetido (já existe na linha {vistos[valor]})")
+            else:
+                vistos[valor] = linha
+        chaves[aba] = set(vistos)
+
+    for aba, coluna, ref in CHAVES_ESTRANGEIRAS:
+        for linha, r in enumerate(tabelas.get(aba, []), start=2):
+            valor = _txt(r.get(coluna))
+            if valor and valor not in chaves[ref]:
+                problemas.append(f"{aba} linha {linha}: {coluna} '{valor}' não existe em {ref}.{CHAVE_PRIMARIA[ref]}")
+
+    # Regras de consistência entre chaves.
+    noticia_da_resposta = {_txt(r.get("id")): _txt(r.get("noticia_id")) for r in tabelas.get("respostas", [])}
+    for linha, r in enumerate(tabelas.get("respostas", []), start=2):
+        rid, nid = _txt(r.get("id")), _txt(r.get("noticia_id"))
+        if rid and nid and not rid.startswith(f"{nid}-R"):
+            problemas.append(f"respostas linha {linha}: id '{rid}' não segue o padrão {nid}-R<número>")
+    for linha, o in enumerate(tabelas.get("ocorrencias", []), start=2):
+        oid, sc, nid = _txt(o.get("id")), _txt(o.get("shortcode")), _txt(o.get("noticia_id"))
+        if oid and sc and nid and oid != f"{sc}:{nid}":
+            problemas.append(f"ocorrencias linha {linha}: id '{oid}' deveria ser '{sc}:{nid}'")
+        rid = _txt(o.get("resposta_usada_id"))
+        if rid and rid in noticia_da_resposta and noticia_da_resposta[rid] != nid:
+            problemas.append(f"ocorrencias linha {linha}: resposta_usada_id '{rid}' é de outra notícia "
+                             f"({noticia_da_resposta[rid]}, não {nid})")
+    return problemas
+
+
 VERDADEIRO = {"sim", "s", "true", "verdadeiro", "1", "x", "ativo"}
 LIMITE_CELULA = 45000  # Sheets aceita até 50.000 caracteres por célula
 
@@ -135,6 +203,7 @@ class Planilha:
                 _lista_suspensa(ws, colunas.index("validacao_humana") + 1, OPCOES_VALIDACAO[nome])
             if nome == "perfis":
                 _lista_suspensa(ws, colunas.index("ativo") + 1, ["sim", "nao"])
+        self._validacoes_de_chave()
         # Remove a aba padrão vazia ("Página1"/"Sheet1") criada junto com a planilha.
         for titulo, ws in existentes.items():
             if titulo in ("Página1", "Sheet1") and not any(any(linha) for linha in ws.get_all_values()):
@@ -142,6 +211,56 @@ class Planilha:
         # Abas na ordem do ESTRUTURA.
         abas = {ws.title: ws for ws in self.planilha.worksheets()}
         self.planilha.reorder_worksheets([abas[n] for n in ESTRUTURA] + [w for t, w in abas.items() if t not in ESTRUTURA])
+
+    # --- integridade -----------------------------------------------------------
+
+    def _validacoes_de_chave(self) -> None:
+        """Na planilha (edição manual): chave estrangeira vira lista suspensa das chaves existentes e
+        rejeita valor inexistente; chave primária rejeita valor repetido. Gravações pela API não
+        passam por essas regras: para elas vale `_checar_chaves`."""
+        locale = self.planilha.fetch_sheet_metadata({"fields": "properties.locale"})["properties"]["locale"]
+        sep = "," if locale.split("_")[0] in ("en", "ja", "zh", "ko", "th", "he", "iw", "hi") else ";"
+        estrangeiras = {(aba, col) for aba, col, _ in CHAVES_ESTRANGEIRAS}
+        for aba, pk in CHAVE_PRIMARIA.items():
+            if (aba, pk) in estrangeiras:
+                continue  # ex.: desmentidos.noticia_id; a unicidade fica no verificar-integridade
+            letra = _letra(ESTRUTURA[aba].index(pk) + 1)
+            self.aba(aba).add_validation(
+                f"{letra}2:{letra}", ValidationConditionType.custom_formula,
+                [f"=COUNTIF(${letra}$2:${letra}{sep}{letra}2)=1"],
+                inputMessage=f"{pk} precisa ser único nesta aba", strict=True,
+            )
+        for aba, col, ref in CHAVES_ESTRANGEIRAS:
+            letra = _letra(ESTRUTURA[aba].index(col) + 1)
+            letra_ref = _letra(ESTRUTURA[ref].index(CHAVE_PRIMARIA[ref]) + 1)
+            self.aba(aba).add_validation(
+                f"{letra}2:{letra}", ValidationConditionType.one_of_range,
+                [f"='{ref}'!${letra_ref}$2:${letra_ref}"],
+                inputMessage=f"Escolha um {CHAVE_PRIMARIA[ref]} existente na aba {ref}",
+                strict=True, showCustomUi=True,
+            )
+
+    def _checar_chaves(self, aba: str, linhas: list[dict]) -> None:
+        """Antes de o robô gravar: chave primária nova e única, chaves estrangeiras existentes."""
+        pk = CHAVE_PRIMARIA[aba]
+        existentes = self._coluna(aba, pk)
+        novas = [_txt(l.get(pk)) for l in linhas]
+        repetidas = {k for k in novas if not k or k in existentes or novas.count(k) > 1}
+        if repetidas:
+            raise ErroIntegridade(f"{aba}: {pk} vazio ou repetido: {sorted(repetidas)}")
+        for a, col, ref in CHAVES_ESTRANGEIRAS:
+            valores = {_txt(l.get(col)) for l in linhas} - {""}
+            if a != aba or not valores:
+                continue
+            faltando = valores - self._coluna(ref, CHAVE_PRIMARIA[ref])
+            if faltando:
+                raise ErroIntegridade(f"{aba}.{col} aponta para {ref} inexistente: {sorted(faltando)}")
+
+    def _coluna(self, aba: str, coluna: str) -> set[str]:
+        return {_txt(v) for v in self.aba(aba).col_values(ESTRUTURA[aba].index(coluna) + 1)[1:]} - {""}
+
+    def verificar_integridade(self) -> list[str]:
+        return problemas_integridade({aba: self.aba(aba).get_all_records() for aba in ESTRUTURA})
 
     # --- perfis ---------------------------------------------------------------
 
@@ -188,6 +307,7 @@ class Planilha:
 
     def adicionar(self, aba: str, linhas: list[dict]) -> None:
         if linhas:
+            self._checar_chaves(aba, linhas)
             # RAW: textos começando com "=" não viram fórmula.
             self.aba(aba).append_rows(
                 [[_celula(l.get(c, "")) for c in ESTRUTURA[aba]] for l in linhas], value_input_option="RAW"
@@ -218,15 +338,18 @@ class Planilha:
         col_oc = ESTRUTURA["ocorrencias"]
         ocorrencias = ws_oc.get_all_records()
         ja_no_destino = {o["shortcode"] for o in ocorrencias if str(o.get("noticia_id")) == destino}
-        upd, movidas = [], 0
+        upd, movidas, descartadas = [], 0, 0
         for linha, o in enumerate(ocorrencias, start=2):
             if str(o.get("noticia_id")) != origem:
                 continue
-            campos = {"id": f"{o['shortcode']}:{destino}", "noticia_id": destino, "titulo_noticia": titulo_destino}
             if o["shortcode"] in ja_no_destino:
-                campos.update(validacao_humana="descartada", obs_validacao=f"duplicada após mescla {origem}->{destino}")
+                # O post já está ligado ao destino: mover criaria id repetido. Fica na origem, descartada.
+                campos = {"validacao_humana": "descartada", "obs_validacao": f"duplicada após mescla {origem}->{destino}"}
+                descartadas += 1
+            else:
+                campos = {"id": f"{o['shortcode']}:{destino}", "noticia_id": destino, "titulo_noticia": titulo_destino}
+                movidas += 1
             upd += _celulas(col_oc, linha, campos)
-            movidas += 1
         if upd:
             ws_oc.batch_update(upd, value_input_option="RAW")
 
@@ -255,7 +378,8 @@ class Planilha:
             value_input_option="RAW",
         )
         self.atualizar_resumo_noticias()
-        return f"{movidas} ocorrências movidas de {origem} para {destino}.{aviso}"
+        extra = f" {descartadas} ficaram em {origem} como descartadas (o post já estava em {destino})." if descartadas else ""
+        return f"{movidas} ocorrências movidas de {origem} para {destino}.{extra}{aviso}"
 
     # --- desmentidos / respostas ----------------------------------------------
 
@@ -272,8 +396,12 @@ def _celulas(colunas: list[str], linha: int, campos: dict) -> list[dict]:
     return [{"range": rowcol_to_a1(linha, colunas.index(c) + 1), "values": [[_celula(v)]]} for c, v in campos.items()]
 
 
+def _letra(coluna: int) -> str:
+    return rowcol_to_a1(1, coluna).rstrip("1")
+
+
 def _lista_suspensa(ws: gspread.Worksheet, coluna: int, opcoes: list[str]) -> None:
-    letra = rowcol_to_a1(1, coluna).rstrip("1")
+    letra = _letra(coluna)
     ws.add_validation(f"{letra}2:{letra}", ValidationConditionType.one_of_list, opcoes,
                       strict=True, showCustomUi=True)
 

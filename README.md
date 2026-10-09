@@ -156,6 +156,29 @@ pronta para usar nas redes (ocorrencias: marcar respondida)
 Para responder um post: na aba `ocorrencias` pegue o `noticia_id`, filtre a aba `respostas`
 por ele e use uma resposta `aprovada`; depois anote o `resposta_usada_id` e marque `respondida`.
 
+## Integridade das chaves
+
+Os campos-chave não aceitam valor inválido:
+
+| Tipo | Campos | Regra |
+|---|---|---|
+| Chave primária (única) | `perfis.id`, `noticias.id`, `postagens.shortcode`, `ocorrencias.id`, `respostas.id`, `desmentidos.noticia_id` | não pode repetir nem ficar vazia |
+| Chave estrangeira | `postagens.perfil_id` → perfis · `ocorrencias.noticia_id` → noticias · `ocorrencias.shortcode` → postagens · `ocorrencias.perfil_id` → perfis · `ocorrencias.resposta_usada_id` → respostas · `desmentidos.noticia_id` → noticias · `respostas.noticia_id` → noticias | só aceita uma chave que exista na outra aba |
+| Consistência | `respostas.id` = `<noticia_id>-R<n>` · `ocorrencias.id` = `<shortcode>:<noticia_id>` · `resposta_usada_id` tem que ser da mesma notícia da ocorrência | padrão dos ids |
+
+Isso é garantido em três camadas:
+
+1. **Na planilha (edição manual):** a coluna de chave estrangeira mostra uma **lista suspensa com
+   as chaves existentes** e **rejeita** valor que não existe ("Escolha um id existente na aba
+   noticias"); a chave primária rejeita valor repetido ("id precisa ser único nesta aba").
+2. **No robô:** antes de gravar, o código confere as chaves e **recusa a gravação** se algo não
+   bater (a validação da planilha não vale para gravações pela API, por isso a checagem no código).
+3. **`verificar-integridade`:** a planilha não impede **apagar** uma linha que outras usam (ex.:
+   apagar a notícia `N0001` deixa órfãs as respostas `N0001-R*`). Esse comando aponta chaves
+   órfãs, repetidas, vazias ou fora do padrão, linha por linha; ele também roda no fim de cada
+   coleta e avisa no log. **Por isso: não apague linhas com chave — marque a validação**
+   (`duplicada`, `descartada`, `reprovada`, `ativo = nao`).
+
 ## Análise de humor: contexto da campanha
 
 | Coluna (aba `postagens`) | Significado |
@@ -203,6 +226,7 @@ Tudo que o robô grava entra como `pendente`. Uma pessoa muda pela lista suspens
 .venv\Scripts\python -m monitor coletar                         # ciclo completo (é o que o agendador roda)
 .venv\Scripts\python -m monitor gerar-respostas                 # rascunha respostas p/ notícias falsas com desmentido
 .venv\Scripts\python -m monitor mesclar-noticias N0007 N0002    # junta a N0007 (duplicada) na N0002
+.venv\Scripts\python -m monitor verificar-integridade           # aponta chaves órfãs, repetidas ou vazias
 .venv\Scripts\python -m monitor testar-perfil vejamais --limite 3   # testa coleta+análise sem gravar na planilha
 .venv\Scripts\python -m monitor testar-analise "legenda de exemplo" # testa só a análise
 ```
