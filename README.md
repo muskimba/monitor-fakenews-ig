@@ -37,6 +37,92 @@ catalogada (mesmo com outras palavras, outra imagem, outro perfil), liga o post 
 cria uma notícia nova (`N0001`, `N0002`…). Se ele separar por engano duas notícias que são a
 mesma, junte com `mesclar-noticias`.
 
+## Guia rápido: o que a equipe faz na planilha
+
+O robô preenche quase tudo sozinho. A equipe só mexe em **três lugares**: incluir páginas,
+marcar a validação humana e cuidar das respostas possíveis. Todo o resto é só leitura.
+
+### 1. Incluir uma página (perfil) para monitorar → aba `perfis`
+
+Acrescente uma linha nova e preencha **só estas colunas**:
+
+| Coluna | O que colocar | Exemplo |
+|---|---|---|
+| `perfil` | o nome de usuário do Instagram, com ou sem @ (é o que vem depois de `instagram.com/`) | `vejamais` |
+| `nome` | um nome para reconhecer a página (opcional) | `VEJA` |
+| `ativo` | `sim` para monitorar, `nao` para pausar (lista suspensa) | `sim` |
+| `observacao` | qualquer anotação (opcional) | `indicada pelo comitê X` |
+
+**Deixe em branco** `id`, `link_perfil`, `adicionado_em`, `ultima_coleta` e
+`status_ultima_coleta`: o robô preenche na próxima coleta. Para conferir se a página está
+sendo lida, olhe `status_ultima_coleta` (`ok: 3 novas` = funcionando; `erro: …` = problema).
+Para parar de monitorar, troque `ativo` para `nao` (não apague a linha: o `id` é usado nas outras abas).
+
+### 2. Marcar a validação humana → coluna `validacao_humana`
+
+O robô grava tudo como `pendente`. Uma pessoa revisa e escolhe na **lista suspensa** da coluna
+`validacao_humana`, e preenche ao lado `validado_por` (seu nome), `validado_em` (data) e, se
+quiser, `obs_validacao` (motivo). Nunca digite outro valor: use só as opções da lista.
+
+| Aba | O que revisar | Escolha |
+|---|---|---|
+| `noticias` ⭐ | a narrativa é mesmo falsa? Leia `titulo`, `alegacao` e, se houver, o desmentido | `fake_confirmada` (é falsa) · `parcialmente_falsa` (mistura verdade e mentira) · `nao_e_fake` (é verdadeira) · `inconclusiva` (não dá para afirmar) · `duplicada` (é a mesma de outra notícia; use também `mesclar-noticias`) |
+| `respostas` ⭐ | o texto pode ser publicado? | `aprovada` · `reprovada` |
+| `ocorrencias` | o post realmente espalha essa notícia? já foi respondido? | `confirmada` · `descartada` (ligação errada) · `respondida` (anote em `resposta_usada_id` qual resposta usou) |
+| `postagens` | a análise de humor está correta? (opcional) | `analise_correta` · `analise_incorreta` |
+
+⭐ = **o mínimo indispensável**: sem `noticias` marcada como falsa e sem `respostas` aprovadas,
+não há resposta pronta para usar. As outras duas validações são opcionais, para controle de qualidade.
+
+### 3. Respostas possíveis → abas `desmentidos` e `respostas`
+
+Uma notícia só recebe respostas depois de ter **um desmentido**. O caminho é:
+
+1. **Escreva o desmentido** (aba `desmentidos`, uma linha por notícia):
+
+   | Coluna | O que colocar |
+   |---|---|
+   | `noticia_id` | o id da notícia na aba `noticias` (ex.: `N0001`) |
+   | `titulo_noticia` | copie o título da notícia (só para facilitar a leitura) |
+   | `veredito` | `falso`, `enganoso`, `fora_de_contexto`, `nao_comprovado` ou `verdadeiro` |
+   | `explicacao` | o que é verdade, em poucas frases e com base nas fontes |
+   | `fontes` | links das fontes, um por linha (os links ficam **só aqui**, nunca nas respostas) |
+
+2. **Gere as respostas automaticamente**: com a notícia marcada `fake_confirmada` ou
+   `parcialmente_falsa` e o desmentido preenchido, rode `gerar-respostas`. O Claude escreve 3
+   respostas possíveis (curta, completa e comentário) na aba `respostas`, todas como `pendente`.
+3. **Ou escreva uma resposta você mesmo**: acrescente uma linha na aba `respostas`:
+
+   | Coluna | O que colocar |
+   |---|---|
+   | `id` | id da notícia + `-R` + número seguinte (ex.: se já existem `N0001-R1` a `R3`, use `N0001-R4`) |
+   | `noticia_id` | o id da notícia (ex.: `N0001`) |
+   | `tipo` | `curta`, `completa` ou `comentario` |
+   | `texto` | a resposta, **sem links** (cite a fonte pelo nome, se quiser: "segundo a PF") |
+   | `origem` | `manual` |
+   | `validacao_humana` | `aprovada`, se você mesmo revisou |
+
+4. **Aprove**: marque `aprovada` nas respostas que podem ser publicadas. Se reprovar todas as de
+   uma notícia, o próximo `gerar-respostas` rascunha um novo lote.
+
+Uma resposta aprovada vale para **todas** as postagens daquela notícia, de qualquer perfil.
+
+### Resumo do dia a dia
+
+```
+incluir página (perfis, ativo = sim)
+        │  robô coleta e analisa
+        ▼
+noticias: marcar fake_confirmada / nao_e_fake / ...        ← validação humana ⭐
+        │
+desmentidos: escrever veredito, explicação e fontes
+        │  gerar-respostas
+        ▼
+respostas: marcar aprovada / reprovada                     ← validação humana ⭐
+        │
+pronta para usar nas redes (ocorrencias: marcar respondida)
+```
+
 ## A planilha: 1 arquivo, 6 abas
 
 ```
