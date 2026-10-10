@@ -216,7 +216,13 @@ Tudo que o robô grava entra como `pendente`. Uma pessoa muda pela lista suspens
 - **Respostas nunca têm link** (comentário com link é penalizado/filtrado). Quando ajuda,
   citam a fonte pelo nome ("segundo a Polícia Federal", "como noticiou a CNN Brasil"), e não
   em todas: em geral só a completa. Há uma trava no código que remove qualquer link.
-- As respostas usam **só** o que está no desmentido: nada inventado, sem atacar quem compartilhou.
+- As respostas usam **só** o que está no desmentido: nada inventado.
+- **As respostas têm lado.** Falam pela militância da campanha de Lula: podem ser firmes e
+  persuasivas, apontar a quem a mentira interessa e as contradições dos adversários (ex.: a
+  campanha de Flávio Bolsonaro), **desde que isso esteja no desmentido, com fonte**. Por isso,
+  ao escrever um desmentido, inclua o **contexto político** relevante (quem espalha, quem se
+  beneficia), sempre com fonte. Nunca: acusação sem fonte, xingamento, ataque pessoal ou ataque
+  ao eleitor comum que compartilhou.
 - O Claude nunca decide sozinho o que é verdade: veredito e desmentido são validados pela equipe.
 
 ## Comandos

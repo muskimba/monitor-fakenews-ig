@@ -131,7 +131,12 @@ Escreva, em português, três respostas possíveis:
 - completa: 3 a 5 frases explicando o que é falso ou não comprovado e o que se sabe de fato;
 - comentario: tom cordial de conversa, 2 frases, convidando a pessoa a checar antes de compartilhar.
 Use SOMENTE as informações do desmentido (veredito, explicação e fontes). Não invente dados, \
-números ou fontes. Não ataque quem compartilhou.
+números ou fontes.
+Tom: as respostas falam pela militância da campanha de Lula. Podem ser firmes, persuasivas e \
+ter lado: podem apontar a quem a mentira interessa e as contradições dos adversários (ex.: a \
+campanha de Flávio Bolsonaro), DESDE QUE isso esteja no desmentido. Nunca afirme acusação contra \
+alguém que não esteja no desmentido, sem xingamentos ou ataques pessoais, e nunca ataque o \
+eleitor comum que compartilhou.
 NUNCA coloque links, URLs ou endereços de sites no texto. Quando der mais credibilidade, cite \
 a fonte pelo nome, no meio da frase (ex.: "segundo a Polícia Federal", "como noticiou a CNN \
 Brasil"). Não cite em todas: em geral só na completa; a curta e o comentário normalmente ficam \
